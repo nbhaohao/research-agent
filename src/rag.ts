@@ -29,7 +29,23 @@ export function tokenize(text: string): string[] {
  *  - 不丢句子；单句超长时它自成一块。
  */
 export function chunk(text: string, maxChars = 200): string[] {
-  throw new Error("m03 未实现：chunk");
+  const sentences = splitSentences(text);
+  const result: string[] = [];
+  let current = "";
+
+  for (const sent of sentences) {
+    if (current === "") {
+      current = sent;
+    } else if (current.length + sent.length <= maxChars) {
+      current += sent;
+    } else {
+      result.push(current);
+      current = sent;
+    }
+  }
+  if (current) result.push(current);
+
+  return result;
 }
 
 /**
@@ -39,5 +55,18 @@ export function chunk(text: string, maxChars = 200): string[] {
  *    最多返回 topK 个。
  */
 export function retrieve(query: string, chunks: string[], topK = 3): string[] {
-  throw new Error("m03 未实现：retrieve");
+  const qTokens = new Set(tokenize(query));
+  const scored: { chunk: string; score: number }[] = [];
+
+  for (const c of chunks) {
+    const cTokens = new Set(tokenize(c));
+    let score = 0;
+    for (const t of qTokens) {
+      if (cTokens.has(t)) score++;
+    }
+    if (score > 0) scored.push({ chunk: c, score });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK).map((s) => s.chunk);
 }
