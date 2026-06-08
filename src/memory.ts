@@ -49,10 +49,28 @@ export class InMemoryStore implements MemoryStore {
    *  - 用 tokenize 给 query 和每条记忆分词，相关度 = 去重 token 的重叠个数。
    *  - 丢掉相关度为 0 的，按相关度从高到低，最多返回 limit 条。
    */
-  async search(query: string, userId: string, limit = 3): Promise<MemoryItem[]> {
-    // TODO(m06)：仿照 m03 的 retrieve——只看 userId 匹配的记忆，用 tokenize 算词重叠相关度，
-    //            丢零分、按相关度降序、最多返回 limit 条。tokenize 已在文件顶部 import。
-    throw new Error("m06 未实现：InMemoryStore.search");
+  async search(
+    query: string,
+    userId: string,
+    limit = 3,
+  ): Promise<MemoryItem[]> {
+    const userItems = this.items.filter((m) => m.userId === userId);
+    if (userItems.length === 0) return [];
+
+    const qTokens = new Set(tokenize(query));
+    const scored: { item: MemoryItem; score: number }[] = [];
+
+    for (const item of userItems) {
+      const itemTokens = new Set(tokenize(item.text));
+      let score = 0;
+      for (const t of qTokens) {
+        if (itemTokens.has(t)) score++;
+      }
+      if (score > 0) scored.push({ item, score });
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map((s) => s.item);
   }
 }
 
@@ -83,7 +101,11 @@ export class Mem0Store implements MemoryStore {
     await m.add([{ role: "user", content: text }], { userId });
   }
 
-  async search(query: string, userId: string, limit = 3): Promise<MemoryItem[]> {
+  async search(
+    query: string,
+    userId: string,
+    limit = 3,
+  ): Promise<MemoryItem[]> {
     const m = await this.client();
     const res = (await m.search(query, { userId, limit })) as {
       results?: Array<{ id?: string; memory?: string; text?: string }>;
@@ -114,10 +136,19 @@ export async function runWithMemory(
   userId: string,
   tools: ToolSpec[] = [],
 ): Promise<AgentResult> {
-  // TODO(m06)：实现记忆闭环——
-  //  1. 召回：store.search(userMessage, userId)
-  //  2. 注入：把召回的记忆拼成 primer，前置到 userMessage（没召回到就不加）
-  //  3. 跑循环：runAgent(client, primer + userMessage, tools)
-  //  4. 固化：store.add(`问：…\n答：…`, userId)，返回 runAgent 的结果
-  throw new Error("m06 未实现：runWithMemory");
+  // 1. 召回
+  const recalled = await store.search(userMessage, userId);
+  // 2. 注入 primer
+  let primer = "";
+  if (recalled.length > 0) {
+    primer =
+      "已知关于该用户的记忆：\n" +
+      recalled.map((m) => `- ${m.text}`).join("\n") +
+      "\n\n";
+  }
+  // 3. 跑循环
+  const result = await runAgent(client, primer + userMessage, tools);
+  // 4. 固化
+  await store.add(`问：${userMessage}\n答：${result.answer}`, userId);
+  return result;
 }
