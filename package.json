@@ -1,0 +1,17 @@
+{
+  "name": "research-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "资料研究助手 · Datawhale Stage 2 capstone · TS + mem0",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsx"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
