@@ -28,7 +28,8 @@ export interface Reference {
 export function bigrams(text: string): Set<string> {
   const toks = tokenize(text);
   const grams = new Set<string>();
-  for (let i = 0; i + 1 < toks.length; i++) grams.add(toks[i] + "|" + toks[i + 1]);
+  for (let i = 0; i + 1 < toks.length; i++)
+    grams.add(toks[i] + "|" + toks[i + 1]);
   return grams;
 }
 
@@ -37,8 +38,19 @@ export function bigrams(text: string): Set<string> {
  *  - references：passages 从 1 开始编号，每条 { id, url, text }。
  *  - sourcesBlock：每行 "[id] (url) text"，用换行连起来（这段塞进 prompt 让 LLM 引用 [n]）。
  */
-export function cite(passages: Passage[]): { sourcesBlock: string; references: Reference[] } {
-  throw new Error("m04 未实现：cite");
+export function cite(passages: Passage[]): {
+  sourcesBlock: string;
+  references: Reference[];
+} {
+  const references: Reference[] = passages.map((p, i) => ({
+    id: i + 1,
+    url: p.url,
+    text: p.text,
+  }));
+  const sourcesBlock = references
+    .map((r) => `[${r.id}] (${r.url}) ${r.text}`)
+    .join("\n");
+  return { sourcesBlock, references };
 }
 
 /**
@@ -46,8 +58,27 @@ export function cite(passages: Passage[]): { sourcesBlock: string; references: R
  *  - 用 bigrams 算 claim 与每条 reference.text 的二元组重叠个数。
  *  - 返回重叠最高的那条 reference；若全为 0（找不到任何支撑）→ 返回 null（可能的幻觉信号）。
  */
-export function attribute(claim: string, references: Reference[]): Reference | null {
-  throw new Error("m04 未实现：attribute");
+export function attribute(
+  claim: string,
+  references: Reference[],
+): Reference | null {
+  const claimBigrams = bigrams(claim);
+  let best: Reference | null = null;
+  let bestScore = 0;
+
+  for (const ref of references) {
+    const refBigrams = bigrams(ref.text);
+    let score = 0;
+    for (const bg of claimBigrams) {
+      if (refBigrams.has(bg)) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = ref;
+    }
+  }
+
+  return bestScore > 0 ? best : null;
 }
 
 /** 把答案逐句 attribute：返回每句 + 它的来源（null = 找不到出处，需复核）。（已给好，串联 cite/attribute） */
