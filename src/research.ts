@@ -41,7 +41,10 @@ export interface ResearchDeps {
 /**
  * 把「主题 + 证据」拼成给 LLM 的总结 prompt。（已给好——把 cite 的 sourcesBlock 塞进去，
  * 并要求 LLM 用 [n] 标注来源，这样它的输出才带可校验的引用编号。） */
-export function buildSummaryPrompt(topic: string, sourcesBlock: string): string {
+export function buildSummaryPrompt(
+  topic: string,
+  sourcesBlock: string,
+): string {
   return [
     `请基于以下带编号的资料，就「${topic}」写一段简洁的研究总结。`,
     `要求：每个论断后用 [编号] 标注来源（如 [1]）；只用资料里的信息，不要编造。`,
@@ -66,16 +69,37 @@ export async function research(
   topic: string,
   deps: ResearchDeps,
 ): Promise<ResearchReport> {
-  // TODO(m07)：把六步串起来——
-  //  1. 搜索：deps.search.search(topic)，取前 (deps.maxSources ?? 3) 条 url
-  //  2. 抓取+检索：每个 url → stripHtml(await deps.fetcher.fetch(url)) → 空则跳过
-  //     → retrieve(topic, chunk(text), 3) 的每段连同 url 收进 passages: Passage[]
-  //  3. 编号：const { sourcesBlock, references } = cite(passages)
-  //  4. 总结：buildSummaryPrompt(topic, sourcesBlock) → deps.client.complete([{role:"user",content:prompt}], [])
-  //     → answer = response.text ?? ""
-  //  5. 校验：verify(answer, references) 里 source===null 的句子收进 unsupported；
-  //     validateCitations(answer, references) → invalidCitations
-  //  6. return { topic, answer, references, unsupported, invalidCitations }
-  // 提示：stripHtml/chunk/retrieve/cite/verify/validateCitations/buildSummaryPrompt 都已 import。
-  throw new Error("m07 未实现：research");
+  // 1. 搜索
+  const results = await deps.search.search(topic);
+  const urls = results.slice(0, deps.maxSources ?? 3).map((r) => r.url);
+
+  // 2. 抓取 + 检索
+  const passages: Passage[] = [];
+  for (const url of urls) {
+    const text = stripHtml(await deps.fetcher.fetch(url));
+    if (!text) continue;
+    for (const seg of retrieve(topic, chunk(text), 3)) {
+      passages.push({ text: seg, url });
+    }
+  }
+
+  // 3. 编号
+  const { sourcesBlock, references } = cite(passages);
+
+  // 4. 总结
+  const prompt = buildSummaryPrompt(topic, sourcesBlock);
+  const response = await deps.client.complete(
+    [{ role: "user", content: prompt }],
+    [],
+  );
+  const answer = response.text ?? "";
+
+  // 5. 校验
+  const unsupported = verify(answer, references)
+    .filter((v) => v.source === null)
+    .map((v) => v.sentence);
+  const invalidCitations = validateCitations(answer, references);
+
+  // 6. 组装
+  return { topic, answer, references, unsupported, invalidCitations };
 }
