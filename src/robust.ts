@@ -20,7 +20,12 @@ export async function safeRun(
   tool: ToolSpec,
   args: Record<string, unknown>,
 ): Promise<string> {
-  throw new Error("m05 未实现：safeRun");
+  try {
+    return await tool.run(args);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `工具 ${tool.name} 执行失败：${msg}`;
+  }
 }
 
 /**
@@ -29,6 +34,19 @@ export async function safeRun(
  *  - 用正则扫出所有 [数字] 引用编号。
  *  - 返回其中不在 references.id 集合里的编号，去重、按出现顺序。全部合法则返回 []。
  */
-export function validateCitations(answer: string, references: Reference[]): number[] {
-  throw new Error("m05 未实现：validateCitations");
+export function validateCitations(
+  answer: string,
+  references: Reference[],
+): number[] {
+  const validIds = new Set(references.map((r) => r.id));
+  const seen = new Set<number>();
+  const invalid: number[] = [];
+  for (const m of answer.matchAll(/\[(\d+)\]/g)) {
+    const id = Number(m[1]);
+    if (!validIds.has(id) && !seen.has(id)) {
+      seen.add(id);
+      invalid.push(id);
+    }
+  }
+  return invalid;
 }

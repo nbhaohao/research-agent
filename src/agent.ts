@@ -6,6 +6,7 @@
  * 工具系统（注册表 / web 搜索）留到 m02。
  */
 import type { LLMClient, Message, ToolSpec } from "./llm";
+import { safeRun } from "./robust";
 
 /** m01 自带的一个最简工具，用来证明「循环能转、工具结果能喂回」。 */
 export const clockTool: ToolSpec = {
@@ -40,6 +41,7 @@ export async function runAgent(
   tools: ToolSpec[] = [],
 ): Promise<AgentResult> {
   const messages: Message[] = [{ role: "user", content: userMessage }];
+  const seen = new Set<string>();
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const response = await client.complete(messages, tools);
@@ -52,20 +54,30 @@ export async function runAgent(
 
       for (const call of response.toolCalls) {
         const tool = tools.find((t) => t.name === call.name);
-        if (tool) {
-          const result = await tool.run(call.args);
-          messages.push({
-            role: "tool",
-            content: result,
-            toolCallId: call.id,
-          });
-        } else {
+        if (!tool) {
           messages.push({
             role: "tool",
             content: `未知工具：${call.name}`,
             toolCallId: call.id,
           });
+          continue;
         }
+        const sig = `${call.name}:${JSON.stringify(call.args)}`;
+        if (seen.has(sig)) {
+          messages.push({
+            role: "tool",
+            content: `重复调用 ${call.name}（相同参数），跳过执行`,
+            toolCallId: call.id,
+          });
+          continue;
+        }
+        seen.add(sig);
+        const result = await safeRun(tool, call.args);
+        messages.push({
+          role: "tool",
+          content: result,
+          toolCallId: call.id,
+        });
       }
       continue;
     }
