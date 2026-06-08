@@ -43,7 +43,9 @@ export class DuckDuckGoProvider implements SearchProvider {
     try {
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
       const resp = await fetch(url);
-      const data = (await resp.json()) as { RelatedTopics?: Array<{ FirstURL?: string; Text?: string }> };
+      const data = (await resp.json()) as {
+        RelatedTopics?: Array<{ FirstURL?: string; Text?: string }>;
+      };
       const topics = data.RelatedTopics ?? [];
       return topics
         .filter((t) => t.FirstURL && t.Text)
@@ -63,5 +65,29 @@ export class DuckDuckGoProvider implements SearchProvider {
  * 注意：parameters 要声明 query 必填，LLM 才知道该传什么。
  */
 export function makeSearchTool(provider: SearchProvider): ToolSpec {
-  throw new Error("m02 未实现：makeSearchTool");
+  return {
+    name: "web_search",
+    description:
+      "在互联网上搜索信息。传入 query 搜索词，返回相关网页的标题、链接和摘要。",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "搜索关键词" },
+      },
+      required: ["query"],
+    },
+    async run(args: Record<string, unknown>): Promise<string> {
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      if (!query) {
+        return "错误：缺少 query 参数，请提供搜索关键词";
+      }
+      const results = await provider.search(query);
+      if (results.length === 0) {
+        return `搜索 "${query}" 没有找到相关结果。`;
+      }
+      return results
+        .map((r, i) => `[${i + 1}] ${r.title} / ${r.url} / ${r.snippet}`)
+        .join("\n\n");
+    },
+  };
 }
