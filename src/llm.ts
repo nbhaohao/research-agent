@@ -31,10 +31,20 @@ export interface LLMResponse {
   toolCalls?: ToolCall[];
 }
 
-/** 一个工具：名字 + 给 LLM 看的描述 + 真正执行的函数。 */
+/** 一个工具：名字 + 给 LLM 看的描述 + （可选）参数 schema + 真正执行的函数。 */
 export interface ToolSpec {
   name: string;
   description: string;
+  /**
+   * 给 LLM 看的参数 schema（JSON-Schema 子集）。LLM 靠它知道该传什么参数。
+   * 无参工具（如 m01 clockTool）可省略；真实 LLM 适配器会把它序列化进 API 的 tools 字段，
+   * LLM 才能正确生成 toolCalls.args。（m02 起需要）
+   */
+  parameters?: {
+    type: "object";
+    properties: Record<string, { type: string; description?: string }>;
+    required?: string[];
+  };
   run(args: Record<string, unknown>): Promise<string> | string;
 }
 
