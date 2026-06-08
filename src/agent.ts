@@ -39,5 +39,45 @@ export async function runAgent(
   userMessage: string,
   tools: ToolSpec[] = [],
 ): Promise<AgentResult> {
-  throw new Error("m01 未实现：runAgent");
+  const messages: Message[] = [{ role: "user", content: userMessage }];
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const response = await client.complete(messages, tools);
+
+    if (response.toolCalls && response.toolCalls.length > 0) {
+      const summaries = response.toolCalls
+        .map((tc) => `${tc.name}(${JSON.stringify(tc.args)})`)
+        .join(", ");
+      messages.push({ role: "assistant", content: `调用工具: ${summaries}` });
+
+      for (const call of response.toolCalls) {
+        const tool = tools.find((t) => t.name === call.name);
+        if (tool) {
+          const result = await tool.run(call.args);
+          messages.push({
+            role: "tool",
+            content: result,
+            toolCallId: call.id,
+          });
+        } else {
+          messages.push({
+            role: "tool",
+            content: `未知工具：${call.name}`,
+            toolCallId: call.id,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (response.text !== undefined) {
+      messages.push({ role: "assistant", content: response.text });
+      return { answer: response.text, messages };
+    }
+  }
+
+  return {
+    answer: `已超过最大步数 ${MAX_STEPS}，循环终止`,
+    messages,
+  };
 }
